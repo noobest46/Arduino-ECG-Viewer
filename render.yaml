@@ -1,0 +1,14 @@
+# Render.com blueprint for the ECG archive viewer.
+# In Render: New > Blueprint, pick the repo containing this folder.
+# Then set MONGODB_URI (Dashboard > Environment) to your Atlas connection string —
+# it is marked sync:false so it is NOT stored in git.
+services:
+  - type: web
+    name: ecg-archive-viewer
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn viewer:app
+    envVars:
+      - key: MONGODB_URI
+        sync: false

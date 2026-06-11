@@ -1,0 +1,131 @@
+/* Theme variables (page chrome). Canvas colors live in app.js THEMES. */
+body.theme-dark  { --bg:#0e0f12; --panel:#15171c; --border:#23262d; --fg:#e6e6e6; --muted:#8b9098; --accent:#4cc3a0; }
+body.theme-white { --bg:#ffffff; --panel:#f3f4f6; --border:#d4d8de; --fg:#1a1d22; --muted:#6b7280; --accent:#0b7a4b; }
+body.theme-paper { --bg:#fff1f0; --panel:#ffe3e3; --border:#f0c0c0; --fg:#5a2a2a; --muted:#a06868; --accent:#b3402f; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.9rem;
+  min-height: 44px;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+/* hide the toolbar scrollbar (still swipe/scrollable) */
+header, .measbar { scrollbar-width: none; }
+header::-webkit-scrollbar, .measbar::-webkit-scrollbar { display: none; }
+header > * { flex: 0 0 auto; }
+header h1 { font-size: 0.95rem; margin: 0; font-weight: 600; letter-spacing: 0.02em; }
+#status {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: #888;
+  color: #fff;
+}
+#status.ok { background: #1f8a4c; }
+#status.err { background: #b13a3a; }
+.bpm {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 4.5rem;
+}
+.meta { font-size: 0.75rem; color: var(--muted); }
+.leadoff { font-size: 0.72rem; font-weight: 600; padding: 0.1rem 0.45rem; border-radius: 999px; white-space: nowrap; }
+.leadoff.ok { color: #1f8a4c; }
+.leadoff.err { color: #fff; background: #b13a3a; }
+.controls { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+.ctrl { font-size: 0.75rem; color: var(--muted); display: inline-flex; align-items: center; gap: 0.25rem; cursor: pointer; }
+.sel, .btn {
+  font-size: 0.72rem;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--panel) 70%, var(--fg) 8%);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+}
+.btn:hover { filter: brightness(1.15); }
+.btn.on { background: #b13a3a; border-color: #b13a3a; color: #fff; }
+#rate { font-size: 0.72rem; min-width: 4rem; text-align: right; }
+.measbar {
+  height: 26px; flex: 0 0 auto; display: flex; align-items: center; gap: 1.1rem;
+  padding: 0 1rem; background: var(--panel); border-bottom: 1px solid var(--border);
+  font-size: 0.74rem; color: var(--muted); white-space: nowrap; overflow-x: auto;
+  font-variant-numeric: tabular-nums;
+}
+.measbar > * { flex: 0 0 auto; }
+.measbar b { color: var(--fg); font-weight: 700; margin-left: 0.3rem; }
+.measbar .note { margin-left: auto; font-size: 0.66rem; opacity: 0.8; }
+main { flex: 1 1 auto; min-height: 0; position: relative; }
+#ecg { display: block; width: 100%; height: 100%; }
+
+/* Save / History (review banner + studies modal) */
+.review {
+  font-size: 0.72rem; font-weight: 700; color: var(--accent); cursor: pointer;
+  white-space: nowrap; padding: 0.1rem 0.5rem;
+  border: 1px solid var(--accent); border-radius: 999px;
+}
+.modal {
+  position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal[hidden] { display: none; }
+.modal-box {
+  background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 8px; width: min(540px, 92vw); max-height: 80vh;
+  display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.35);
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0.6rem 0.9rem; border-bottom: 1px solid var(--border); font-weight: 700;
+}
+.hist-list { overflow-y: auto; }
+.hist-row {
+  display: flex; gap: 0.9rem; align-items: center; padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid var(--border); cursor: pointer; font-size: 0.8rem;
+}
+.hist-row:hover { background: color-mix(in srgb, var(--panel) 70%, var(--fg) 12%); }
+.hist-row .pid { font-weight: 700; min-width: 7rem; overflow: hidden; text-overflow: ellipsis; }
+.hist-row .sub { color: var(--muted); }
+.hist-row .dur { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.hist-row .hist-del { padding: 0.05rem 0.4rem; opacity: 0.5; }
+.hist-row .hist-del:hover { opacity: 1; background: #b13a3a; border-color: #b13a3a; color: #fff; }
+.modal-actions { display: flex; gap: 0.4rem; align-items: center; }
+.hist-empty { padding: 1rem 0.9rem; color: var(--muted); font-size: 0.8rem; }
+
+/* Phones / tablets: shrink the toolbar, drop non-essential text, keep ECG legible */
+@media (max-width: 820px) {
+  header { gap: 0.4rem; }
+  header h1, #meta, #rate { display: none; }
+  .sel, .btn { font-size: 0.68rem; padding: 0.15rem 0.3rem; }
+  .ctrl { font-size: 0.68rem; }
+  .controls { margin-left: 0.4rem; gap: 0.4rem; }
+  main { overflow-y: auto; }
+  #ecg { min-height: 520px; }   /* keep leads tall enough; scroll if the screen is short */
+}
+
+/* Printable report (browser "Save as PDF"). Use White or ECG-paper theme + landscape. */
+@media print {
+  .controls, #status, #rate { display: none !important; }
+  header, .measbar { border-bottom: 1px solid #ccc; }
+}

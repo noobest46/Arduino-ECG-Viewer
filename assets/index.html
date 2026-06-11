@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ECG archive</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="theme-paper">
+  <header>
+    <h1>ECG archive</h1>
+    <span id="status" class="pending">archive</span>
+    <span id="bpm" class="bpm">– BPM</span>
+    <span id="leadoff" class="leadoff ok">● leads OK</span>
+    <span class="meta" id="meta">12-lead</span>
+    <span id="review" class="review" hidden></span>
+    <div class="controls">
+      <select id="theme" class="sel" title="Theme">
+        <option value="dark">Dark</option>
+        <option value="white">White</option>
+        <option value="paper">ECG paper</option>
+      </select>
+      <select id="layout" class="sel" title="Layout">
+        <option value="stacked">Stacked</option>
+        <option value="grid">3×4</option>
+        <option value="grid_rhythm">3×4 + rhythm</option>
+      </select>
+      <select id="gain" class="sel" title="Calibrated gain (mV range per lane)">
+        <option value="0.5">±0.5 mV</option>
+        <option value="1">±1 mV</option>
+        <option value="1.5">±1.5 mV</option>
+        <option value="2">±2 mV</option>
+        <option value="4">±4 mV</option>
+      </select>
+      <select id="sweep" class="sel" title="Sweep speed">
+        <option value="12.5">12.5 mm/s</option>
+        <option value="25">25 mm/s</option>
+        <option value="50">50 mm/s</option>
+      </select>
+      <label class="ctrl"><input type="checkbox" id="filter" checked> filter</label>
+      <label class="ctrl"><input type="checkbox" id="calib" checked> calibrated</label>
+      <label class="ctrl"><input type="checkbox" id="calpulse"> cal</label>
+      <button id="freeze" class="btn" title="Freeze / resume">❄</button>
+      <button id="trends" class="btn" title="HR trend">Trends</button>
+      <button id="rec" class="btn">● REC</button>
+      <button id="csv" class="btn">CSV</button>
+      <button id="png" class="btn">PNG</button>
+      <button id="report" class="btn" title="Printable report (Save as PDF)">Report</button>
+      <button id="save" class="btn" title="Save this 10 s strip to the database">Save</button>
+      <button id="history" class="btn" title="Browse saved studies">History</button>
+    </div>
+    <span class="meta" id="rate">—</span>
+  </header>
+  <div id="measurements" class="measbar"></div>
+  <main><canvas id="ecg"></canvas></main>
+
+  <div id="histModal" class="modal" hidden>
+    <div class="modal-box">
+      <div class="modal-head"><span>Saved studies</span><span class="modal-actions"><button id="histClear" class="btn">Clear all</button><button id="histClose" class="btn">✕</button></span></div>
+      <div id="histList" class="hist-list"></div>
+    </div>
+  </div>
+
+  <!-- Archive viewer: read-only, no board, no live socket. The flag makes app.js
+       skip the live stream and hide the Save / REC / delete controls. -->
+  <script>window.ECG_VIEWER = true;</script>
+  <script src="app.js"></script>
+</body>
+</html>
