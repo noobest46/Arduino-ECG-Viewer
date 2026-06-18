@@ -20,6 +20,7 @@ const freezeBtn = document.getElementById("freeze");
 const recBtn = document.getElementById("rec");
 const csvBtn = document.getElementById("csv");
 const edfBtn = document.getElementById("edf");
+const capBtn = document.getElementById("capture");
 const pngBtn = document.getElementById("png");
 const trendsBtn = document.getElementById("trends");
 const reportBtn = document.getElementById("report");
@@ -164,9 +165,9 @@ function detectHR(v, t) {
 function bpmNow() { if (!bpmHist.length || (lastT - lastPeak) > 3) return null; const s = [...bpmHist].sort((a, b) => a - b); return Math.round(s[s.length >> 1]); }
 
 // ---------- recording / export ----------
-let recording = false;
+let recording = false, capturing = false;
 const rec = [];
-recBtn.onclick = () => { recording = !recording; if (recording) rec.length = 0; recBtn.classList.toggle("on", recording); recBtn.textContent = recording ? "● REC…" : "● REC"; };
+recBtn.onclick = () => { if (capturing) return; recording = !recording; if (recording) rec.length = 0; recBtn.classList.toggle("on", recording); recBtn.textContent = recording ? "● REC…" : "● REC"; };
 pngBtn.onclick = () => { const a = document.createElement("a"); a.download = "ecg_" + Date.now() + ".png"; a.href = canvas.toDataURL("image/png"); a.click(); };
 csvBtn.onclick = () => {
   const src = rec.length ? rec : buf;
@@ -263,6 +264,27 @@ edfBtn.onclick = () => {
   a.download = `ecg_${name}_${Date.now()}.edf`;
   a.href = URL.createObjectURL(new Blob([buildEDF(src)], { type: "application/octet-stream" }));
   a.click();
+};
+
+// On-demand fixed-length capture (Omron-style spot recording) → local EDF+.
+const CAPTURE_SEC = 30;
+capBtn.onclick = () => {
+  if (capturing || reviewing) return;
+  capturing = true; rec.length = 0; recording = true;
+  recBtn.classList.add("on"); capBtn.classList.add("on");
+  let left = CAPTURE_SEC; capBtn.textContent = `● ${left}s`;
+  const iv = setInterval(() => { if (--left > 0) capBtn.textContent = `● ${left}s`; }, 1000);
+  setTimeout(() => {
+    clearInterval(iv);
+    recording = false; capturing = false;
+    recBtn.classList.remove("on"); capBtn.classList.remove("on"); capBtn.textContent = "Capture 30s";
+    if (rec.length) {
+      const a = document.createElement("a");
+      a.download = `ecg_capture_${Date.now()}.edf`;
+      a.href = URL.createObjectURL(new Blob([buildEDF(rec)], { type: "application/octet-stream" }));
+      a.click();
+    }
+  }, CAPTURE_SEC * 1000);
 };
 
 // ---------- save study / history (MongoDB Atlas, via the server) ----------
@@ -597,7 +619,7 @@ if (VIEWER) {
   document.title = "ECG archive";
   statusEl.textContent = "archive"; statusEl.className = "";
   rateEl.textContent = "";
-  for (const el of [saveBtn, recBtn, histClear]) if (el) el.style.display = "none";
+  for (const el of [saveBtn, recBtn, histClear, capBtn]) if (el) el.style.display = "none";
   histBtn.click();                                 // open the studies list immediately
 } else {
   fetch("/samples").then(r => r.json()).then(list => { if (Array.isArray(list)) list.forEach(s => push(s.t, s.ch)); }).catch(() => {});

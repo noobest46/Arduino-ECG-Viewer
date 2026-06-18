@@ -6,7 +6,7 @@
 # the same connection string the board uses. Read-only: no save/delete endpoints.
 
 import os
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, Response
 
 import ecg_store  # storage layer — reads MONGODB_URI env var (or a local db_config.py)
 
@@ -37,6 +37,16 @@ def studies():
 @app.get("/study/<study_id>")
 def study(study_id):
     return jsonify(ecg_store.get_study(study_id) or {"error": "not found"})
+
+
+@app.get("/study/<study_id>/edf")
+def study_edf(study_id):
+    # Raw 12-lead EDF+ download (also the fetch URL for an ML pipeline).
+    data = ecg_store.get_study_edf(study_id)
+    if not data:
+        return jsonify({"error": "not found"}), 404
+    return Response(data, mimetype="application/octet-stream",
+                    headers={"Content-Disposition": f'attachment; filename="study_{study_id}.edf"'})
 
 
 @app.get("/<path:path>")
