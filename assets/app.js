@@ -188,7 +188,7 @@ let recording = false, capturing = false;
 const rec = [];
 pngBtn.onclick = () => { const a = document.createElement("a"); a.download = "ecg_" + Date.now() + ".png"; a.href = canvas.toDataURL("image/png"); a.click(); };
 csvBtn.onclick = () => {
-  const src = rec.length ? rec : buf;
+  const src = activeBuf;   // export exactly what's displayed (reviewed study when reviewing, else live window)
   const head = ["t_s", ...LEADS.map(l => l.name + "_mV"), ...LEADS.map(l => l.name + "_filt_mV")].join(",");
   const lines = [head];
   for (const s of src) {
@@ -276,7 +276,7 @@ function buildEDF(src) {
 }
 
 edfBtn.onclick = () => {
-  const src = rec.length ? rec : buf;
+  const src = activeBuf;   // export exactly what's displayed (reviewed study when reviewing, else live window)
   if (!src.length) return;
   const name = (currentStudyMeta && currentStudyMeta.patient) ? currentStudyMeta.patient.replace(/\s+/g, "_") : "live";
   const a = document.createElement("a");
@@ -343,7 +343,7 @@ resultSave.onclick = async () => {
 // One-page printable report (browser → Save as PDF). Reports the displayed strip
 // (live, frozen, or a reviewed study) + verdict + measurements.
 function buildReport() {
-  const m = analyze(buf);
+  const m = analyze(activeBuf);   // match the displayed strip (reviewed study / frozen / live)
   const v = verdict(m);
   const patient = (currentStudyMeta && currentStudyMeta.patient) || currentPatient || "anon";
   const created = (currentStudyMeta && currentStudyMeta.created) || (Date.now() / 1000);
