@@ -58,7 +58,7 @@ const THEMES = {
 
 // persisted settings
 let theme = localStorage.getItem("ecgTheme") || "paper";
-let layout = localStorage.getItem("ecgLayout") || "grid";   // 3×4 printout is the default
+let layout = localStorage.getItem("ecgLayout") || "grid_rhythm";   // 3×4 + rhythm strip (clinical standard) is the default
 let mvRange = parseFloat(localStorage.getItem("ecgGain")) || 1.5;
 let sweep = parseFloat(localStorage.getItem("ecgSweep")) || 25;
 if (sweep !== 25 && sweep !== 50) sweep = 25;   // 12.5 mm/s removed (redundant with the 10 s buffer)
@@ -285,21 +285,25 @@ edfBtn.onclick = () => {
   a.click();
 };
 
-// On-demand fixed-length capture (Omron-style spot recording) → result card + local EDF+.
+// On-demand fixed-length reading → result card + local EDF+. Click again to cancel.
 const CAPTURE_SEC = 30;
-let lastCaptureEdf = null;
+let lastCaptureEdf = null, capTimer = null, capInterval = null;
+function stopCapture() {                                               // common teardown
+  clearInterval(capInterval); clearTimeout(capTimer); capInterval = capTimer = null;
+  recording = false; capturing = false;
+  capBtn.classList.remove("on"); capBtn.textContent = "Capture 30s";
+}
 capBtn.onclick = () => {
-  if (capturing || reviewing) return;
+  if (reviewing) return;
+  if (capturing) { stopCapture(); rec.length = 0; return; }            // click again → cancel + discard
   capturing = true; rec.length = 0; recording = true;
   capBtn.classList.add("on");
-  let left = CAPTURE_SEC; capBtn.textContent = `● ${left}s`;
-  const iv = setInterval(() => { if (--left > 0) capBtn.textContent = `● ${left}s`; }, 1000);
-  setTimeout(() => {
-    clearInterval(iv);
-    recording = false; capturing = false;
-    capBtn.classList.remove("on"); capBtn.textContent = "Capture 30s";
+  let left = CAPTURE_SEC; capBtn.textContent = `✕ ${left}s`;           // ✕ + countdown: click to cancel
+  capInterval = setInterval(() => { if (--left > 0) capBtn.textContent = `✕ ${left}s`; }, 1000);
+  capTimer = setTimeout(() => {
+    stopCapture();
     if (rec.length) {
-      const saved = currentStudyMeta;                                   // stamp the capture EDF with the patient
+      const saved = currentStudyMeta;                                 // stamp the capture EDF with the patient
       currentStudyMeta = { patient: currentPatient || "anon", created: Date.now() / 1000 };
       lastCaptureEdf = buildEDF(rec);
       currentStudyMeta = saved;
