@@ -1,7 +1,7 @@
 // 12-lead ECG dashboard (UNO Q WebUI brick)
 // Filter · calibrated mV grid + 1mV cal pulse · gain · sweep speed ·
 // stacked / 3x4 / 3x4+rhythm layout · freeze · heart rate · lead-off ·
-// CSV (raw+filtered) / PNG export · theme switcher.
+// EDF+ (default, raw) / CSV / PNG export · theme switcher.
 
 const canvas = document.getElementById("ecg");
 const ctx = canvas.getContext("2d");
@@ -19,6 +19,7 @@ const sweepSel = document.getElementById("sweep");
 const freezeBtn = document.getElementById("freeze");
 const recBtn = document.getElementById("rec");
 const csvBtn = document.getElementById("csv");
+const edfBtn = document.getElementById("edf");
 const pngBtn = document.getElementById("png");
 const trendsBtn = document.getElementById("trends");
 const reportBtn = document.getElementById("report");
@@ -137,6 +138,7 @@ function filterCh(raw) { const o = new Array(8); for (let i = 0; i < 8; i++) o[i
 const buf = [];
 let lastT = 0;
 let reviewing = false;            // true while a stored study is loaded (ignore live data)
+let currentStudyMeta = null;      // {patient, created} of the loaded study (for EDF+ header), else null
 function push(t, raw) {
   if (reviewing) return;          // viewing a saved study — don't overwrite it with live samples
   const f = filterCh(raw);
@@ -176,6 +178,90 @@ csvBtn.onclick = () => {
   }
   const a = document.createElement("a"); a.download = "ecg_" + Date.now() + ".csv";
   a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" })); a.click();
+};
+
+// ---------- EDF+ export (raw 12-lead in µV — DEFAULT raw format, ML-ready) ----------
+// Standard biosignal container: self-describing header (sampling rate, µV calibration,
+// per-lead labels, patient, start time) + an EDF+ annotation channel; int16 samples.
+// Readable directly by pyEDFlib / MNE and comparable to public ECG datasets.
+function _edfField(s, n) { s = String(s); if (s.length > n) s = s.slice(0, n); while (s.length < n) s += " "; return s; }
+
+function buildEDF(src) {
+  const fs = FS, ns = LEADS.length, N = src.length, spr = fs;          // 1-second data records
+  const nrec = Math.max(1, Math.ceil(N / spr)), ANN = 128, annSpr = ANN / 2;
+  const leads = [], pmin = [], pmax = [];
+  for (let c = 0; c < ns; c++) {                                       // raw (unfiltered) µV per lead + phys range
+    const a = new Float64Array(N); let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < N; i++) { const v = LEADS[c].fn(src[i].raw) * lsbUv; a[i] = v; if (v < lo) lo = v; if (v > hi) hi = v; }
+    if (!isFinite(lo)) { lo = -1000; hi = 1000; }
+    lo = Math.floor(lo); hi = Math.ceil(hi); if (hi - lo < 100) { lo -= 50; hi += 50; }   // EDF requires pmin<pmax
+    leads.push(a); pmin.push(lo); pmax.push(hi);
+  }
+  const sig = ns + 1, headerLen = 256 * (sig + 1);
+  const d = (currentStudyMeta && currentStudyMeta.created) ? new Date(currentStudyMeta.created * 1000) : new Date();
+  const p = x => String(x).padStart(2, "0");
+  const MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  const pid = (((currentStudyMeta && currentStudyMeta.patient) || "X").replace(/\s+/g, "_")) || "X";
+
+  let h = "";
+  h += _edfField("0", 8);                                             // version
+  h += _edfField(pid + " X X X", 80);                                // EDF+ local patient id
+  h += _edfField(`Startdate ${p(d.getDate())}-${MON[d.getMonth()]}-${d.getFullYear()} X UNOQ-ECG raw_12lead_${fs}Hz`, 80);
+  h += _edfField(`${p(d.getDate())}.${p(d.getMonth() + 1)}.${p(d.getFullYear() % 100)}`, 8);  // startdate dd.mm.yy
+  h += _edfField(`${p(d.getHours())}.${p(d.getMinutes())}.${p(d.getSeconds())}`, 8);          // starttime hh.mm.ss
+  h += _edfField(String(headerLen), 8);
+  h += _edfField("EDF+C", 44);                                        // reserved → EDF+ continuous
+  h += _edfField(String(nrec), 8);
+  h += _edfField("1", 8);                                             // data-record duration (s)
+  h += _edfField(String(sig), 4);
+
+  const lbl = LEADS.map(l => "ECG " + l.name).concat(["EDF Annotations"]);
+  const cols = [[], [], [], [], [], [], [], [], [], []];              // field-major signal header
+  for (let c = 0; c < sig; c++) {
+    const ann = c === ns;
+    cols[0].push(_edfField(lbl[c], 16));                              // label
+    cols[1].push(_edfField("", 80));                                 // transducer
+    cols[2].push(_edfField(ann ? "" : "uV", 8));                     // physical dimension
+    cols[3].push(_edfField(ann ? "-1" : String(pmin[c]), 8));        // physical min
+    cols[4].push(_edfField(ann ? "1" : String(pmax[c]), 8));         // physical max
+    cols[5].push(_edfField("-32768", 8));                           // digital min
+    cols[6].push(_edfField("32767", 8));                            // digital max
+    cols[7].push(_edfField("", 80));                                 // prefiltering
+    cols[8].push(_edfField(String(ann ? annSpr : spr), 8));          // samples per record
+    cols[9].push(_edfField("", 32));                                 // reserved
+  }
+  h += cols.map(col => col.join("")).join("");
+
+  const recBytes = ns * spr * 2 + ANN, out = new Uint8Array(headerLen + nrec * recBytes);
+  for (let i = 0; i < headerLen; i++) out[i] = h.charCodeAt(i) & 0xff;
+  const dv = new DataView(out.buffer);
+  let off = headerLen;
+  for (let r = 0; r < nrec; r++) {
+    for (let c = 0; c < ns; c++) {
+      const a = leads[c], lo = pmin[c], span = pmax[c] - pmin[c];
+      for (let k = 0; k < spr; k++) {
+        const i = r * spr + k, v = i < N ? a[i] : a[N - 1];           // pad final record by repeating last sample
+        let q = Math.round((v - lo) / span * 65535 - 32768);
+        q = q < -32768 ? -32768 : (q > 32767 ? 32767 : q);
+        dv.setInt16(off, q, true); off += 2;
+      }
+    }
+    let tal = `+${r}\x14\x14\x00`;                                    // time-keeping TAL (required each record)
+    if (r === 0) tal += `+0\x14${pid} | raw 12-lead @ ${fs} Hz\x14\x00`;
+    for (let b = 0; b < ANN; b++) out[off + b] = b < tal.length ? (tal.charCodeAt(b) & 0xff) : 0;
+    off += ANN;
+  }
+  return out;
+}
+
+edfBtn.onclick = () => {
+  const src = rec.length ? rec : buf;
+  if (!src.length) return;
+  const name = (currentStudyMeta && currentStudyMeta.patient) ? currentStudyMeta.patient.replace(/\s+/g, "_") : "live";
+  const a = document.createElement("a");
+  a.download = `ecg_${name}_${Date.now()}.edf`;
+  a.href = URL.createObjectURL(new Blob([buildEDF(src)], { type: "application/octet-stream" }));
+  a.click();
 };
 
 // ---------- save study / history (MongoDB Atlas, via the server) ----------
@@ -253,6 +339,7 @@ async function openStudy(id) {
 
 function loadStudy(st) {
   reviewing = true;
+  currentStudyMeta = { patient: st.patient || "anon", created: st.created || (Date.now() / 1000) };
   saveBtn.disabled = true;                         // saving snapshots LIVE data, not the study
   if (st.lsb_uv) lsbUv = st.lsb_uv;
   frozen = false; frozenBuf = null;                // review shows buf directly
@@ -269,7 +356,7 @@ function loadStudy(st) {
 }
 
 reviewEl.onclick = () => {                          // exit review → back to live
-  reviewing = false; saveBtn.disabled = false;
+  reviewing = false; saveBtn.disabled = false; currentStudyMeta = null;
   buf.length = 0; lastT = 0;
   bpmHist = []; lastPeak = 0; prevV = 0; env = 1;
   reviewEl.hidden = true;
