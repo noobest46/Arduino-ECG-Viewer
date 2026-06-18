@@ -22,6 +22,12 @@ const edfBtn = document.getElementById("edf");
 const capBtn = document.getElementById("capture");
 const moreBtn = document.getElementById("more");
 const moreMenu = document.getElementById("moreMenu");
+const patientBtn = document.getElementById("patient");
+const resultModal = document.getElementById("resultModal");
+const resultBody = document.getElementById("resultBody");
+const resultClose = document.getElementById("resultClose");
+const resultSave = document.getElementById("resultSave");
+const resultEdf = document.getElementById("resultEdf");
 const pngBtn = document.getElementById("png");
 const trendsBtn = document.getElementById("trends");
 const reportBtn = document.getElementById("report");
@@ -35,6 +41,7 @@ const histClose = document.getElementById("histClose");
 const histClear = document.getElementById("histClear");
 const reviewEl = document.getElementById("review");
 const VIEWER = !!window.ECG_VIEWER;   // archive viewer (no board): read-only, no live stream
+let currentPatient = localStorage.getItem("ecgPatient") || "";
 
 const FS = 125;                  // Hz — must match the sketch (500 / DECIMATE)
 let lsbUv = (2 * 2.4 / 6) / (1 << 24) * 1e6;
@@ -63,6 +70,11 @@ applyTheme(theme); layoutSel.value = layout; gainSel.value = String(mvRange); sw
 // "⚙ More" popover (secondary controls)
 moreBtn.onclick = (e) => { e.stopPropagation(); moreMenu.hidden = !moreMenu.hidden; };
 document.addEventListener("click", (e) => { if (!moreMenu.hidden && !moreMenu.contains(e.target) && e.target !== moreBtn) moreMenu.hidden = true; });
+
+// patient profile (used by Save, the Capture result card, and the EDF+ header/filename)
+function setPatient(p) { currentPatient = (p || "").trim(); localStorage.setItem("ecgPatient", currentPatient); patientBtn.textContent = "👤 " + (currentPatient || "Patient"); }
+patientBtn.onclick = () => { const p = prompt("Patient ID / name:", currentPatient); if (p !== null) setPatient(p); };
+setPatient(currentPatient);
 
 // freeze
 let frozen = false, frozenBuf = null;
@@ -270,8 +282,9 @@ edfBtn.onclick = () => {
   a.click();
 };
 
-// On-demand fixed-length capture (Omron-style spot recording) → local EDF+.
+// On-demand fixed-length capture (Omron-style spot recording) → result card + local EDF+.
 const CAPTURE_SEC = 30;
+let lastCaptureEdf = null;
 capBtn.onclick = () => {
   if (capturing || reviewing) return;
   capturing = true; rec.length = 0; recording = true;
@@ -283,27 +296,62 @@ capBtn.onclick = () => {
     recording = false; capturing = false;
     capBtn.classList.remove("on"); capBtn.textContent = "Capture 30s";
     if (rec.length) {
-      const a = document.createElement("a");
-      a.download = `ecg_capture_${Date.now()}.edf`;
-      a.href = URL.createObjectURL(new Blob([buildEDF(rec)], { type: "application/octet-stream" }));
-      a.click();
+      const saved = currentStudyMeta;                                   // stamp the capture EDF with the patient
+      currentStudyMeta = { patient: currentPatient || "anon", created: Date.now() / 1000 };
+      lastCaptureEdf = buildEDF(rec);
+      currentStudyMeta = saved;
+      showResult(analyze(rec));
     }
   }, CAPTURE_SEC * 1000);
+};
+
+// Result card (consumer verdict after a capture)
+function showResult(m) {
+  const v = verdict(m);
+  resultBody.innerHTML =
+    `<div class="verdict ${v.cls}">${v.label}</div>` +
+    `<div class="verdict-sub">${v.sub}</div>` +
+    `<div class="result-grid">` +
+      `<div><span>Heart rate</span><b>${m && m.hr != null ? m.hr + " bpm" : "—"}</b></div>` +
+      `<div><span>PR</span><b>${fmtMs(m ? m.pr : NaN)}</b></div>` +
+      `<div><span>QRS</span><b>${fmtMs(m ? m.qrs : NaN)}</b></div>` +
+      `<div><span>QT / QTc</span><b>${fmtMs(m ? m.qt : NaN)} / ${fmtMs(m ? m.qtc : NaN)}</b></div>` +
+    `</div>` +
+    `<div class="result-meta">${escapeHtml(currentPatient || "anon")} · ${fmtDate(Date.now() / 1000)} · 30 s capture</div>` +
+    `<div class="result-disc">Screening / education only — not a diagnosis. Consult a clinician.</div>`;
+  resultModal.hidden = false;
+}
+resultClose.onclick = () => { resultModal.hidden = true; };
+resultModal.onclick = (e) => { if (e.target === resultModal) resultModal.hidden = true; };
+resultEdf.onclick = () => {
+  if (!lastCaptureEdf) return;
+  const a = document.createElement("a");
+  a.download = `ecg_${(currentPatient || "anon").replace(/\s+/g, "_")}_${Date.now()}.edf`;
+  a.href = URL.createObjectURL(new Blob([lastCaptureEdf], { type: "application/octet-stream" }));
+  a.click();
+};
+resultSave.onclick = async () => {
+  const old = resultSave.textContent; resultSave.disabled = true; resultSave.textContent = "Saving…";
+  const ok = await saveStudy(currentPatient || "anon");
+  resultSave.textContent = ok ? "Saved ✓" : "DB off";
+  setTimeout(() => { resultSave.disabled = false; resultSave.textContent = old; }, 1600);
 };
 
 // ---------- save study / history (MongoDB Atlas, via the server) ----------
 // "Save" tells the server to snapshot its current ~10 s buffer into the cloud DB.
 // "History" lists saved studies; clicking one replays it here (review mode).
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function fmtDate(sec) { const d = new Date((sec || 0) * 1000), p = n => String(n).padStart(2, "0"); return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; }   // DD/MM/YYYY HH:MM
 
+async function saveStudy(patient) {
+  try { const r = await fetch("/save/" + encodeURIComponent(patient || "anon")).then(r => r.json()); return !!(r && r.ok); }
+  catch { return false; }
+}
 saveBtn.onclick = async () => {
-  const p = prompt("Patient ID / name for this study:", "");
-  if (p === null) return;                                   // cancelled
+  if (!currentPatient) { const p = prompt("Patient ID / name:", ""); if (p === null) return; setPatient(p); }
   const old = saveBtn.textContent; saveBtn.disabled = true; saveBtn.textContent = "Saving…";
-  try {
-    const r = await fetch("/save/" + encodeURIComponent(p.trim() || "anon")).then(r => r.json());
-    saveBtn.textContent = (r && r.ok) ? "Saved ✓" : "DB off";
-  } catch { saveBtn.textContent = "Error"; }
+  const ok = await saveStudy(currentPatient || "anon");
+  saveBtn.textContent = ok ? "Saved ✓" : "DB off";
   setTimeout(() => { saveBtn.disabled = reviewing; saveBtn.textContent = old; }, 1600);
 };
 
@@ -318,7 +366,7 @@ async function loadHistory() {
     for (const s of studies) {
       const row = document.createElement("div");
       row.className = "hist-row";
-      const when = new Date((s.created || 0) * 1000).toLocaleString();
+      const when = fmtDate(s.created);
       const dur = ((s.n_samples || 0) / (s.fs || FS)).toFixed(1);
       row.innerHTML = `<span class="pid">${escapeHtml(s.patient || "anon")}</span>` +
                       `<span class="sub">${when}</span><span class="dur">${dur}s</span>` +
@@ -381,7 +429,7 @@ function loadStudy(st) {
   bpmHist = []; lastPeak = 0; prevV = 0; env = 1;  // recompute HR/measurements over the study
   for (const s of buf) detectHR(s.f[2], s.t);
   lastT = buf.length ? buf[buf.length - 1].t : 0;
-  const when = st.created ? new Date(st.created * 1000).toLocaleString() : "";
+  const when = st.created ? fmtDate(st.created) : "";
   reviewEl.hidden = false;
   reviewEl.textContent = (VIEWER ? "✕ close · " : "◀ Live · reviewing ") + `${st.patient || "anon"}${when ? " · " + when : ""}`;
   computeMeasurements();
@@ -548,18 +596,19 @@ setInterval(() => { if (VIEWER) return; const now = performance.now(), dt = (now
 function median(a) { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
 function axisCat(a) { if (a >= -30 && a <= 90) return "normal"; if (a < -30 && a >= -90) return "LAD"; if (a > 90 && a <= 180) return "RAD"; return "extreme"; }
 
-function computeMeasurements() {
-  const b = buf, n = b.length;
-  if (n < FS * 2.5) return;
+// Shared analyzer: R-peaks + intervals + rhythm over any buffer b. Returns metrics or null.
+function analyze(b) {
+  const n = b ? b.length : 0;
+  if (n < FS * 2.5) return null;
   const II = i => b[i].f[2], LI = i => b[i].f[1], AVF = i => b[i].f[2] - b[i].f[1] / 2;
   const dt = 1 / FS, w = s => Math.round(s * FS);
 
   // R peaks on filtered lead II
   let maxA = 0; for (let i = 0; i < n; i++) { const v = Math.abs(II(i)); if (v > maxA) maxA = v; }
-  if (maxA < 1) return;
+  if (maxA < 1) return null;
   const thr = 0.5 * maxA, refr = w(0.3), peaks = []; let last = -1e9;
   for (let i = 2; i < n - 2; i++) if (II(i) > thr && II(i) >= II(i - 1) && II(i) > II(i + 1) && (i - last) > refr) { peaks.push(i); last = i; }
-  if (peaks.length < 3) return;
+  if (peaks.length < 3) return { rhythm: "—", hr: null, nBeats: peaks.length, pr: NaN, qrs: NaN, qt: NaN, qtc: NaN, ang: NaN, st: NaN };
 
   const PR = [], QRS = [], QT = [], QTc = [], ST = [], ANG = [];
   for (let k = 1; k < peaks.length - 1; k++) {
@@ -573,50 +622,61 @@ function computeMeasurements() {
     let j = r; for (let i = r; i < r + w(0.16) && i < n; i++) if (Math.abs(II(i) - bl) < aThr) { j = i; break; }   // QRS offset (J point)
     QRS.push((j - q) * dt * 1000);
 
-    // P wave (bump before QRS)
     let pPk = -1, pMax = -Infinity;
     for (let i = Math.max(1, q - w(0.25)); i < q - w(0.04); i++) { const v = II(i) - bl; if (v > pMax) { pMax = v; pPk = i; } }
     if (pPk > 0 && pMax > 0.08 * Ramp) { let pOn = pPk; for (let i = pPk; i > pPk - w(0.12) && i > 0; i--) if ((II(i) - bl) < 0.15 * pMax) { pOn = i; break; } PR.push((q - pOn) * dt * 1000); }
 
-    // T wave + end (baseline return)
     let tPk = -1, tMax = -Infinity;
     for (let i = j + w(0.04); i < Math.min(n, j + w(0.42)); i++) { const v = Math.abs(II(i) - bl); if (v > tMax) { tMax = v; tPk = i; } }
     if (tPk > 0) { let tEnd = tPk; for (let i = tPk; i < Math.min(n, tPk + w(0.22)); i++) if (Math.abs(II(i) - bl) < 0.1 * tMax) { tEnd = i; break; } const qt = (tEnd - q) * dt; QT.push(qt * 1000); if (rr > 0) QTc.push(qt / Math.sqrt(rr) * 1000); }
 
     ST.push((II(Math.min(n - 1, j + w(0.06))) - bl) * lsbUv / 1000);   // ST at J+60ms
 
-    // frontal-plane QRS axis from net area in I and aVF
     const bIa = [], bAa = []; for (let i = b0; i < b1; i++) { bIa.push(LI(i)); bAa.push(AVF(i)); }
     const blI = median(bIa), blA = median(bAa); let nI = 0, nA = 0;
     for (let i = q; i <= j; i++) { nI += LI(i) - blI; nA += AVF(i) - blA; }
     ANG.push(Math.atan2(nA, nI) * 180 / Math.PI);
   }
 
-  // rhythm classification (non-diagnostic) + HR trend sample
   const RR = []; for (let k = 1; k < peaks.length; k++) RR.push((peaks[k] - peaks[k - 1]) / FS);
-  let rhythm = "—";
+  let rhythm = "—", hr = null;
   if (RR.length >= 3) {
-    const mRR = RR.reduce((a, b) => a + b, 0) / RR.length, hrr = 60 / mRR;
-    const sd = Math.sqrt(RR.reduce((a, b) => a + (b - mRR) ** 2, 0) / RR.length);
+    const mRR = RR.reduce((a, x) => a + x, 0) / RR.length, hrr = 60 / mRR;
+    const sd = Math.sqrt(RR.reduce((a, x) => a + (x - mRR) ** 2, 0) / RR.length);
+    hr = Math.round(hrr);
     if (sd / mRR > 0.15) rhythm = "Irregular (?AF)";
     else if (hrr < 60) rhythm = "Sinus brady";
     else if (hrr > 100) rhythm = "Sinus tachy";
     else rhythm = "Normal sinus";
   }
+  return { rhythm, hr, nBeats: peaks.length, pr: median(PR), qrs: median(QRS), qt: median(QT), qtc: median(QTc), ang: median(ANG), st: median(ST) };
+}
+
+const fmtMs = v => isFinite(v) ? v.toFixed(0) + " ms" : "—";
+
+function computeMeasurements() {     // live measurements bar (uses the rolling 10 s buffer)
+  const m = analyze(buf);
+  if (!m) return;
   const hrT = bpmNow();
   if (hrT) { trendBuf.push({ t: Date.now(), hr: hrT }); if (trendBuf.length > 600) trendBuf.shift(); }
-
-  const ms = v => isFinite(v) ? v.toFixed(0) + " ms" : "—";
-  const pr = median(PR), qrs = median(QRS), qt = median(QT), qtc = median(QTc), st = median(ST), ang = median(ANG);
   measEl.innerHTML =
-    `<span>Rhythm<b>${rhythm}</b></span>` +
-    `<span>PR<b>${ms(pr)}</b></span>` +
-    `<span>QRS<b>${ms(qrs)}</b></span>` +
-    `<span>QT<b>${ms(qt)}</b></span>` +
-    `<span>QTc<b>${ms(qtc)}</b></span>` +
-    `<span>Axis<b>${isFinite(ang) ? (ang > 0 ? "+" : "") + ang.toFixed(0) + "° " + axisCat(ang) : "—"}</b></span>` +
-    `<span>ST(II)<b>${isFinite(st) ? (st > 0 ? "+" : "") + st.toFixed(2) + " mV" : "—"}</b></span>` +
+    `<span>Rhythm<b>${m.rhythm}</b></span>` +
+    `<span>PR<b>${fmtMs(m.pr)}</b></span>` +
+    `<span>QRS<b>${fmtMs(m.qrs)}</b></span>` +
+    `<span>QT<b>${fmtMs(m.qt)}</b></span>` +
+    `<span>QTc<b>${fmtMs(m.qtc)}</b></span>` +
+    `<span>Axis<b>${isFinite(m.ang) ? (m.ang > 0 ? "+" : "") + m.ang.toFixed(0) + "° " + axisCat(m.ang) : "—"}</b></span>` +
+    `<span>ST(II)<b>${isFinite(m.st) ? (m.st > 0 ? "+" : "") + m.st.toFixed(2) + " mV" : "—"}</b></span>` +
     `<span class="note">approx · not for clinical use</span>`;
+}
+
+// Consumer-facing verdict (Omron-style) from analyzer metrics.
+function verdict(m) {
+  if (!m || m.hr == null || m.nBeats < 3) return { label: "Inconclusive — please retry", cls: "warn", sub: "signal too short or noisy" };
+  if (m.rhythm === "Irregular (?AF)") return { label: "Possible Atrial Fibrillation", cls: "bad", sub: `${m.hr} bpm · irregular rhythm` };
+  if (m.rhythm === "Sinus brady") return { label: "Bradycardia (slow heart rate)", cls: "warn", sub: `${m.hr} bpm · regular` };
+  if (m.rhythm === "Sinus tachy") return { label: "Tachycardia (fast heart rate)", cls: "warn", sub: `${m.hr} bpm · regular` };
+  return { label: "Normal Sinus Rhythm", cls: "good", sub: `${m.hr} bpm · regular` };
 }
 setInterval(computeMeasurements, 1000);
 
@@ -628,7 +688,7 @@ if (VIEWER) {
   document.title = "ECG archive";
   statusEl.textContent = "archive"; statusEl.className = "";
   rateEl.textContent = "";
-  for (const el of [saveBtn, histClear, capBtn]) if (el) el.style.display = "none";
+  for (const el of [saveBtn, histClear, capBtn, patientBtn]) if (el) el.style.display = "none";
   histBtn.click();                                 // open the studies list immediately
 } else {
   fetch("/samples").then(r => r.json()).then(list => { if (Array.isArray(list)) list.forEach(s => push(s.t, s.ch)); }).catch(() => {});

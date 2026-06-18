@@ -14,6 +14,7 @@
     <span id="leadoff" class="leadoff ok">● leads OK</span>
     <span class="meta" id="meta">12-lead</span>
     <span id="review" class="review" hidden></span>
+    <button id="patient" class="btn patient" title="Set patient ID for saves &amp; captures">👤 Patient</button>
     <div class="controls">
       <select id="layout" class="sel" title="Layout">
         <option value="stacked">Stacked</option>
@@ -78,6 +79,17 @@
   <!-- Archive viewer: read-only, no board, no live socket. The flag makes app.js
        skip the live stream and hide the Save / REC / delete controls. -->
   <script>window.ECG_VIEWER = true;</script>
+  <div id="resultModal" class="modal" hidden>
+    <div class="modal-box">
+      <div class="modal-head"><span>Capture result</span><button id="resultClose" class="btn">✕</button></div>
+      <div id="resultBody" class="result-body"></div>
+      <div class="result-actions">
+        <button id="resultSave" class="btn">Save to records</button>
+        <button id="resultEdf" class="btn">Download EDF+</button>
+      </div>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
