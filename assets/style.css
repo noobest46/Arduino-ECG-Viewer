@@ -157,8 +157,23 @@ main { flex: 1 1 auto; min-height: 0; position: relative; }
   #ecg { min-height: 520px; }   /* keep leads tall enough; scroll if the screen is short */
 }
 
-/* Printable report (browser "Save as PDF"). Use White or ECG-paper theme + landscape. */
+/* One-page printable report (browser → "Save as PDF"). Hidden on screen; shown only when printing. */
+#printReport { display: none; }
+.rep-head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+.rep-head h2 { margin: 0; font-size: 18px; }
+.rep-sub { font-size: 11px; color: #444; }
+.rep-meta { font-size: 12px; text-align: right; line-height: 1.6; }
+.rep-verdict { font-size: 16px; font-weight: 800; margin: 8px 0 10px; }
+.rep-verdict span { font-weight: 400; font-size: 12px; color: #444; }
+.rep-verdict.good { color: #1f8a4c; }
+.rep-verdict.warn { color: #9a6b00; }
+.rep-verdict.bad { color: #b13a3a; }
+.rep-img { width: 100%; border: 1px solid #999; }
+.rep-tab { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+.rep-tab td { border: 1px solid #bbb; padding: 5px 8px; }
+.rep-tab td:nth-child(odd) { color: #555; width: 17%; }
+.rep-disc { margin-top: 10px; font-size: 10px; color: #555; font-style: italic; }
 @media print {
-  .controls, #status, #rate { display: none !important; }
-  header, .measbar { border-bottom: 1px solid #ccc; }
+  body > *:not(#printReport) { display: none !important; }
+  #printReport { display: block !important; color: #000; padding: 6px; }
 }

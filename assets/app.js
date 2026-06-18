@@ -28,6 +28,8 @@ const resultBody = document.getElementById("resultBody");
 const resultClose = document.getElementById("resultClose");
 const resultSave = document.getElementById("resultSave");
 const resultEdf = document.getElementById("resultEdf");
+const histFilter = document.getElementById("histFilter");
+const printReport = document.getElementById("printReport");
 const pngBtn = document.getElementById("png");
 const trendsBtn = document.getElementById("trends");
 const reportBtn = document.getElementById("report");
@@ -89,7 +91,7 @@ freezeBtn.onclick = () => {
 let trendsOn = false;
 const trendBuf = [];   // {t, hr} sampled once/sec
 trendsBtn.onclick = () => { trendsOn = !trendsOn; trendsBtn.classList.toggle("on", trendsOn); };
-reportBtn.onclick = () => window.print();
+reportBtn.onclick = () => buildReport();
 
 // Channel -> lead mapping (Table 3.1). c[0..7] = CH1..CH8.
 const I = c => c[1], II = c => c[2];
@@ -337,6 +339,34 @@ resultSave.onclick = async () => {
   setTimeout(() => { resultSave.disabled = false; resultSave.textContent = old; }, 1600);
 };
 
+// One-page printable report (browser → Save as PDF). Reports the displayed strip
+// (live, frozen, or a reviewed study) + verdict + measurements.
+function buildReport() {
+  const m = analyze(buf);
+  const v = verdict(m);
+  const patient = (currentStudyMeta && currentStudyMeta.patient) || currentPatient || "anon";
+  const created = (currentStudyMeta && currentStudyMeta.created) || (Date.now() / 1000);
+  const ang = m && isFinite(m.ang) ? (m.ang > 0 ? "+" : "") + m.ang.toFixed(0) + "° " + axisCat(m.ang) : "—";
+  const st = m && isFinite(m.st) ? (m.st > 0 ? "+" : "") + m.st.toFixed(2) + " mV" : "—";
+  printReport.innerHTML =
+    `<div class="rep-head"><div><h2>12-Lead ECG Report</h2>` +
+    `<div class="rep-sub">Arduino UNO Q · ADS1298 — proof-of-concept · not a medical device</div></div>` +
+    `<div class="rep-meta"><div><b>Patient:</b> ${escapeHtml(patient)}</div>` +
+    `<div><b>Date:</b> ${fmtDate(created)}</div><div><b>Scale:</b> ${sweep} mm/s · 10 mm/mV</div></div></div>` +
+    `<div class="rep-verdict ${v.cls}">${v.label} <span>· ${v.sub}</span></div>` +
+    `<img class="rep-img" src="${canvas.toDataURL("image/png")}" />` +
+    `<table class="rep-tab"><tbody>` +
+    `<tr><td>Heart rate</td><td>${m && m.hr != null ? m.hr + " bpm" : "—"}</td><td>Rhythm</td><td>${m ? m.rhythm : "—"}</td></tr>` +
+    `<tr><td>PR</td><td>${fmtMs(m ? m.pr : NaN)}</td><td>QRS</td><td>${fmtMs(m ? m.qrs : NaN)}</td></tr>` +
+    `<tr><td>QT</td><td>${fmtMs(m ? m.qt : NaN)}</td><td>QTc</td><td>${fmtMs(m ? m.qtc : NaN)}</td></tr>` +
+    `<tr><td>Axis</td><td>${ang}</td><td>ST (II)</td><td>${st}</td></tr>` +
+    `</tbody></table>` +
+    `<div class="rep-disc">Measurements are computed automatically and are approximate — for screening / education only, not a diagnosis. Consult a clinician.</div>`;
+  const img = printReport.querySelector(".rep-img");
+  if (img && !img.complete) img.onload = () => window.print();   // wait for the snapshot to decode
+  else window.print();
+}
+
 // ---------- save study / history (MongoDB Atlas, via the server) ----------
 // "Save" tells the server to snapshot its current ~10 s buffer into the cloud DB.
 // "History" lists saved studies; clicking one replays it here (review mode).
@@ -355,28 +385,37 @@ saveBtn.onclick = async () => {
   setTimeout(() => { saveBtn.disabled = reviewing; saveBtn.textContent = old; }, 1600);
 };
 
+let allStudies = [];
 async function loadHistory() {
   histList.innerHTML = '<div class="hist-empty">Loading…</div>';
   try {
-    const studies = await fetch("/studies").then(r => r.json());
-    if (!Array.isArray(studies) || !studies.length) {
-      histList.innerHTML = '<div class="hist-empty">No saved studies (or database not configured).</div>'; return;
-    }
-    histList.innerHTML = "";
-    for (const s of studies) {
-      const row = document.createElement("div");
-      row.className = "hist-row";
-      const when = fmtDate(s.created);
-      const dur = ((s.n_samples || 0) / (s.fs || FS)).toFixed(1);
-      row.innerHTML = `<span class="pid">${escapeHtml(s.patient || "anon")}</span>` +
-                      `<span class="sub">${when}</span><span class="dur">${dur}s</span>` +
-                      (VIEWER ? "" : `<button class="btn hist-del" title="Delete this study">✕</button>`);
-      row.onclick = () => openStudy(s.id);
-      if (!VIEWER) row.querySelector(".hist-del").onclick = (e) => { e.stopPropagation(); deleteStudy(s.id); };
-      histList.appendChild(row);
-    }
-  } catch { histList.innerHTML = '<div class="hist-empty">Failed to load (database not reachable).</div>'; }
+    allStudies = await fetch("/studies").then(r => r.json());
+    if (!Array.isArray(allStudies)) allStudies = [];
+  } catch { allStudies = []; histList.innerHTML = '<div class="hist-empty">Failed to load (database not reachable).</div>'; return; }
+  const pts = [...new Set(allStudies.map(s => s.patient || "anon"))].sort();
+  histFilter.innerHTML = `<option value="">All patients</option>` + pts.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join("");
+  if (currentPatient && pts.includes(currentPatient)) histFilter.value = currentPatient;
+  renderHistory();
 }
+function renderHistory() {
+  const f = histFilter.value;
+  const studies = f ? allStudies.filter(s => (s.patient || "anon") === f) : allStudies;
+  if (!studies.length) { histList.innerHTML = '<div class="hist-empty">No saved studies (or database not configured).</div>'; return; }
+  histList.innerHTML = "";
+  for (const s of studies) {
+    const row = document.createElement("div");
+    row.className = "hist-row";
+    const when = fmtDate(s.created);
+    const dur = ((s.n_samples || 0) / (s.fs || FS)).toFixed(1);
+    row.innerHTML = `<span class="pid">${escapeHtml(s.patient || "anon")}</span>` +
+                    `<span class="sub">${when}</span><span class="dur">${dur}s</span>` +
+                    (VIEWER ? "" : `<button class="btn hist-del" title="Delete this study">✕</button>`);
+    row.onclick = () => openStudy(s.id);
+    if (!VIEWER) row.querySelector(".hist-del").onclick = (e) => { e.stopPropagation(); deleteStudy(s.id); };
+    histList.appendChild(row);
+  }
+}
+histFilter.onchange = renderHistory;
 
 async function deleteStudy(id) {
   if (!confirm("Delete this study?")) return;
