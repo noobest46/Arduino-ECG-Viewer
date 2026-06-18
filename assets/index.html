@@ -15,40 +15,53 @@
     <span class="meta" id="meta">12-lead</span>
     <span id="review" class="review" hidden></span>
     <div class="controls">
-      <select id="theme" class="sel" title="Theme">
-        <option value="dark">Dark</option>
-        <option value="white">White</option>
-        <option value="paper">ECG paper</option>
-      </select>
       <select id="layout" class="sel" title="Layout">
         <option value="stacked">Stacked</option>
         <option value="grid">3×4</option>
         <option value="grid_rhythm">3×4 + rhythm</option>
       </select>
-      <select id="gain" class="sel" title="Calibrated gain (mV range per lane)">
-        <option value="0.5">±0.5 mV</option>
-        <option value="1">±1 mV</option>
-        <option value="1.5">±1.5 mV</option>
-        <option value="2">±2 mV</option>
-        <option value="4">±4 mV</option>
-      </select>
-      <select id="sweep" class="sel" title="Paper speed — 25 mm/s standard (full 10 s); 50 mm/s zooms in to 5 s">
-        <option value="25">25 mm/s</option>
-        <option value="50">50 mm/s</option>
-      </select>
-      <label class="ctrl" title="Band-pass 0.5–40 Hz: removes baseline wander and mains/EMG noise (display only — raw data is kept unfiltered)"><input type="checkbox" id="filter" checked> filter</label>
-      <label class="ctrl" title="Calibrated mode: fixed mV grid (nominal 10 mm/mV) instead of auto-scaling each lead to fit its lane"><input type="checkbox" id="calib" checked> calibrated</label>
-      <label class="ctrl" title="Show a 1 mV calibration pulse at the left edge of each lead (the standard amplitude reference)"><input type="checkbox" id="calpulse"> cal</label>
       <button id="freeze" class="btn" title="Freeze / resume">❄</button>
-      <button id="trends" class="btn" title="HR trend">Trends</button>
-      <button id="rec" class="btn">● REC</button>
       <button id="capture" class="btn" title="Record 30 s on demand and save as EDF+ locally (Omron-style spot capture)">Capture 30s</button>
-      <button id="edf" class="btn" title="Export raw 12-lead as EDF+ (default · ML-ready)">EDF+</button>
-      <button id="csv" class="btn" title="Export as CSV (alternative)">CSV</button>
-      <button id="png" class="btn">PNG</button>
-      <button id="report" class="btn" title="Printable report (Save as PDF)">Report</button>
       <button id="save" class="btn" title="Save this 10 s strip to the database">Save</button>
       <button id="history" class="btn" title="Browse saved studies">History</button>
+      <button id="more" class="btn" title="More settings &amp; export">⚙</button>
+      <div id="moreMenu" class="menu" hidden>
+        <div class="menu-row"><span>Theme</span>
+          <select id="theme" class="sel" title="Theme">
+            <option value="dark">Dark</option>
+            <option value="white">White</option>
+            <option value="paper">ECG paper</option>
+          </select>
+        </div>
+        <div class="menu-row"><span>Gain</span>
+          <select id="gain" class="sel" title="Calibrated gain (mV range per lane)">
+            <option value="0.5">±0.5 mV</option>
+            <option value="1">±1 mV</option>
+            <option value="1.5">±1.5 mV</option>
+            <option value="2">±2 mV</option>
+            <option value="4">±4 mV</option>
+          </select>
+        </div>
+        <div class="menu-row"><span>Speed</span>
+          <select id="sweep" class="sel" title="Paper speed — 25 mm/s standard (full 10 s); 50 mm/s zooms in to 5 s">
+            <option value="25">25 mm/s</option>
+            <option value="50">50 mm/s</option>
+          </select>
+        </div>
+        <div class="menu-row menu-checks">
+          <label class="ctrl" title="Band-pass 0.5–40 Hz: removes baseline wander and mains/EMG noise (display only — raw data is kept unfiltered)"><input type="checkbox" id="filter" checked> filter</label>
+          <label class="ctrl" title="Calibrated mode: fixed mV grid (nominal 10 mm/mV) instead of auto-scaling each lead to fit its lane"><input type="checkbox" id="calib" checked> calibrated</label>
+          <label class="ctrl" title="Show a 1 mV calibration pulse at the left edge of each lead (the standard amplitude reference)"><input type="checkbox" id="calpulse"> cal</label>
+        </div>
+        <div class="menu-sep"></div>
+        <div class="menu-row menu-actions">
+          <button id="trends" class="btn" title="HR trend">Trends</button>
+          <button id="edf" class="btn" title="Export raw 12-lead as EDF+ (default · ML-ready)">EDF+</button>
+          <button id="csv" class="btn" title="Export as CSV (alternative)">CSV</button>
+          <button id="png" class="btn">PNG</button>
+          <button id="report" class="btn" title="Printable report (Save as PDF)">Report</button>
+        </div>
+      </div>
     </div>
     <span class="meta" id="rate">—</span>
   </header>

@@ -17,10 +17,11 @@ const layoutSel = document.getElementById("layout");
 const gainSel = document.getElementById("gain");
 const sweepSel = document.getElementById("sweep");
 const freezeBtn = document.getElementById("freeze");
-const recBtn = document.getElementById("rec");
 const csvBtn = document.getElementById("csv");
 const edfBtn = document.getElementById("edf");
 const capBtn = document.getElementById("capture");
+const moreBtn = document.getElementById("more");
+const moreMenu = document.getElementById("moreMenu");
 const pngBtn = document.getElementById("png");
 const trendsBtn = document.getElementById("trends");
 const reportBtn = document.getElementById("report");
@@ -58,6 +59,10 @@ layoutSel.onchange = () => { layout = layoutSel.value; localStorage.setItem("ecg
 gainSel.onchange = () => { mvRange = parseFloat(gainSel.value); localStorage.setItem("ecgGain", mvRange); };
 sweepSel.onchange = () => { sweep = parseFloat(sweepSel.value); localStorage.setItem("ecgSweep", sweep); };
 applyTheme(theme); layoutSel.value = layout; gainSel.value = String(mvRange); sweepSel.value = String(sweep);
+
+// "⚙ More" popover (secondary controls)
+moreBtn.onclick = (e) => { e.stopPropagation(); moreMenu.hidden = !moreMenu.hidden; };
+document.addEventListener("click", (e) => { if (!moreMenu.hidden && !moreMenu.contains(e.target) && e.target !== moreBtn) moreMenu.hidden = true; });
 
 // freeze
 let frozen = false, frozenBuf = null;
@@ -167,7 +172,6 @@ function bpmNow() { if (!bpmHist.length || (lastT - lastPeak) > 3) return null; 
 // ---------- recording / export ----------
 let recording = false, capturing = false;
 const rec = [];
-recBtn.onclick = () => { if (capturing) return; recording = !recording; if (recording) rec.length = 0; recBtn.classList.toggle("on", recording); recBtn.textContent = recording ? "● REC…" : "● REC"; };
 pngBtn.onclick = () => { const a = document.createElement("a"); a.download = "ecg_" + Date.now() + ".png"; a.href = canvas.toDataURL("image/png"); a.click(); };
 csvBtn.onclick = () => {
   const src = rec.length ? rec : buf;
@@ -271,13 +275,13 @@ const CAPTURE_SEC = 30;
 capBtn.onclick = () => {
   if (capturing || reviewing) return;
   capturing = true; rec.length = 0; recording = true;
-  recBtn.classList.add("on"); capBtn.classList.add("on");
+  capBtn.classList.add("on");
   let left = CAPTURE_SEC; capBtn.textContent = `● ${left}s`;
   const iv = setInterval(() => { if (--left > 0) capBtn.textContent = `● ${left}s`; }, 1000);
   setTimeout(() => {
     clearInterval(iv);
     recording = false; capturing = false;
-    recBtn.classList.remove("on"); capBtn.classList.remove("on"); capBtn.textContent = "Capture 30s";
+    capBtn.classList.remove("on"); capBtn.textContent = "Capture 30s";
     if (rec.length) {
       const a = document.createElement("a");
       a.download = `ecg_capture_${Date.now()}.edf`;
@@ -344,6 +348,11 @@ histModal.onclick = (e) => { if (e.target === histModal) histModal.hidden = true
 // Run a stored study's raw rows through a fresh band-pass (independent of the live filter state).
 function filterStudy(rows) {
   const lp2 = Array.from({ length: 8 }, mk), hp2 = Array.from({ length: 8 }, mk);
+  if (rows.length) {                              // warm up the cold filters at the first sample's DC level
+    const r0 = rows[0];                           // (else the 0.5 Hz high-pass settling shows as a big swoop in col 1: I/II/III)
+    for (let w = 0; w < 300; w++)
+      for (let c = 0; c < 8; c++) flt(lp, lp2[c], flt(hp, hp2[c], r0[c]));
+  }
   return rows.map((raw, i) => {
     const f = new Array(8);
     for (let c = 0; c < 8; c++) f[c] = flt(lp, lp2[c], flt(hp, hp2[c], raw[c]));
@@ -619,7 +628,7 @@ if (VIEWER) {
   document.title = "ECG archive";
   statusEl.textContent = "archive"; statusEl.className = "";
   rateEl.textContent = "";
-  for (const el of [saveBtn, recBtn, histClear, capBtn]) if (el) el.style.display = "none";
+  for (const el of [saveBtn, histClear, capBtn]) if (el) el.style.display = "none";
   histBtn.click();                                 // open the studies list immediately
 } else {
   fetch("/samples").then(r => r.json()).then(list => { if (Array.isArray(list)) list.forEach(s => push(s.t, s.ch)); }).catch(() => {});

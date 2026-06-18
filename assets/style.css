@@ -66,6 +66,22 @@ header h1 { font-size: 0.95rem; margin: 0; font-weight: 600; letter-spacing: 0.0
 }
 .btn:hover { filter: brightness(1.15); }
 .btn.on { background: #b13a3a; border-color: #b13a3a; color: #fff; }
+
+/* ⚙ More popover (secondary controls) — fixed so the header's overflow can't clip it */
+.menu {
+  position: fixed; top: 46px; right: 10px; z-index: 60;
+  background: var(--panel); color: var(--fg);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.55rem; min-width: 232px;
+  display: flex; flex-direction: column; gap: 0.5rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.menu[hidden] { display: none; }
+.menu-row { display: flex; align-items: center; gap: 0.5rem; justify-content: space-between; flex-wrap: wrap; }
+.menu-row > span { font-size: 0.72rem; color: var(--muted); }
+.menu-checks { justify-content: flex-start; gap: 0.85rem; }
+.menu-actions { gap: 0.4rem; }
+.menu-sep { height: 1px; background: var(--border); margin: 0.05rem 0; }
 #rate { font-size: 0.72rem; min-width: 4rem; text-align: right; }
 .measbar {
   height: 26px; flex: 0 0 auto; display: flex; align-items: center; gap: 1.1rem;
