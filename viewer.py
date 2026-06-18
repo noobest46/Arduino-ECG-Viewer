@@ -6,7 +6,7 @@
 # the same connection string the board uses. Read-only: no save/delete endpoints.
 
 import os
-from flask import Flask, jsonify, send_from_directory, Response
+from flask import Flask, jsonify, send_from_directory, Response, request
 
 import ecg_store  # storage layer — reads MONGODB_URI env var (or a local db_config.py)
 
@@ -17,6 +17,14 @@ ASSETS = os.path.join(HERE, "assets")
 LSB_UV = (2 * 2.4 / 6) / (1 << 24) * 1e6
 
 app = Flask(__name__, static_folder=None)
+
+
+@app.after_request
+def _no_cache(resp):
+    # always revalidate the front-end so a new deploy shows up without a hard refresh
+    if request.path == "/" or request.path.endswith((".js", ".css", ".html")):
+        resp.headers["Cache-Control"] = "no-cache, max-age=0"
+    return resp
 
 
 @app.get("/")
