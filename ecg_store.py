@@ -64,17 +64,15 @@ def build_edf(rows, fs, lsb_uv, patient="X", created=None):
     N, ns, spr, ANN = len(rows), 12, int(fs), 128
     ann_spr, nrec = ANN // 2, max(1, (N + int(fs) - 1) // int(fs))
     derived = [_derive12(c) for c in rows]
-    leads, pmin, pmax = [], [], []
-    for li in range(ns):
-        arr = [derived[i][li] * lsb_uv for i in range(N)]
-        lo = math.floor(min(arr)) if arr else -1000
-        hi = math.ceil(max(arr)) if arr else 1000
-        if hi - lo < 100:
-            lo -= 50
-            hi += 50
-        leads.append(arr)
-        pmin.append(int(lo))
-        pmax.append(int(hi))
+    leads = [[derived[i][li] * lsb_uv for i in range(N)] for li in range(ns)]
+    allv = [v for arr in leads for v in arr]                 # uniform physical range across all 12 leads
+    glo = math.floor(min(allv)) if allv else -1000           # (same resolution → EDFbrowser derivations + uniform scale)
+    ghi = math.ceil(max(allv)) if allv else 1000
+    if ghi - glo < 100:
+        glo -= 50
+        ghi += 50
+    pmin = [int(glo)] * ns
+    pmax = [int(ghi)] * ns
     sig = ns + 1
     header_len = 256 * (sig + 1)
     d = time.localtime(created if created else time.time())

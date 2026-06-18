@@ -209,14 +209,15 @@ function _edfField(s, n) { s = String(s); if (s.length > n) s = s.slice(0, n); w
 function buildEDF(src) {
   const fs = FS, ns = LEADS.length, N = src.length, spr = fs;          // 1-second data records
   const nrec = Math.max(1, Math.ceil(N / spr)), ANN = 128, annSpr = ANN / 2;
-  const leads = [], pmin = [], pmax = [];
-  for (let c = 0; c < ns; c++) {                                       // raw (unfiltered) µV per lead + phys range
-    const a = new Float64Array(N); let lo = Infinity, hi = -Infinity;
-    for (let i = 0; i < N; i++) { const v = LEADS[c].fn(src[i].raw) * lsbUv; a[i] = v; if (v < lo) lo = v; if (v > hi) hi = v; }
-    if (!isFinite(lo)) { lo = -1000; hi = 1000; }
-    lo = Math.floor(lo); hi = Math.ceil(hi); if (hi - lo < 100) { lo -= 50; hi += 50; }   // EDF requires pmin<pmax
-    leads.push(a); pmin.push(lo); pmax.push(hi);
+  const leads = []; let glo = Infinity, ghi = -Infinity;             // raw (unfiltered) µV per lead
+  for (let c = 0; c < ns; c++) {
+    const a = new Float64Array(N);
+    for (let i = 0; i < N; i++) { const v = LEADS[c].fn(src[i].raw) * lsbUv; a[i] = v; if (v < glo) glo = v; if (v > ghi) ghi = v; }
+    leads.push(a);
   }
+  if (!isFinite(glo)) { glo = -1000; ghi = 1000; }                   // uniform physical range across all 12 leads
+  glo = Math.floor(glo); ghi = Math.ceil(ghi); if (ghi - glo < 100) { glo -= 50; ghi += 50; }   // (same resolution → EDFbrowser derivations + uniform scale)
+  const pmin = new Array(ns).fill(glo), pmax = new Array(ns).fill(ghi);
   const sig = ns + 1, headerLen = 256 * (sig + 1);
   const d = (currentStudyMeta && currentStudyMeta.created) ? new Date(currentStudyMeta.created * 1000) : new Date();
   const p = x => String(x).padStart(2, "0");
