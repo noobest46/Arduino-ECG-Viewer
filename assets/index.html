@@ -32,14 +32,13 @@
         <option value="2">±2 mV</option>
         <option value="4">±4 mV</option>
       </select>
-      <select id="sweep" class="sel" title="Sweep speed">
-        <option value="12.5">12.5 mm/s</option>
+      <select id="sweep" class="sel" title="Paper speed — 25 mm/s standard (full 10 s); 50 mm/s zooms in to 5 s">
         <option value="25">25 mm/s</option>
         <option value="50">50 mm/s</option>
       </select>
-      <label class="ctrl"><input type="checkbox" id="filter" checked> filter</label>
-      <label class="ctrl"><input type="checkbox" id="calib" checked> calibrated</label>
-      <label class="ctrl"><input type="checkbox" id="calpulse"> cal</label>
+      <label class="ctrl" title="Band-pass 0.5–40 Hz: removes baseline wander and mains/EMG noise (display only — raw data is kept unfiltered)"><input type="checkbox" id="filter" checked> filter</label>
+      <label class="ctrl" title="Calibrated mode: fixed mV grid (nominal 10 mm/mV) instead of auto-scaling each lead to fit its lane"><input type="checkbox" id="calib" checked> calibrated</label>
+      <label class="ctrl" title="Show a 1 mV calibration pulse at the left edge of each lead (the standard amplitude reference)"><input type="checkbox" id="calpulse"> cal</label>
       <button id="freeze" class="btn" title="Freeze / resume">❄</button>
       <button id="trends" class="btn" title="HR trend">Trends</button>
       <button id="rec" class="btn">● REC</button>

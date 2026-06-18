@@ -47,9 +47,10 @@ const THEMES = {
 
 // persisted settings
 let theme = localStorage.getItem("ecgTheme") || "paper";
-let layout = localStorage.getItem("ecgLayout") || "stacked";
+let layout = localStorage.getItem("ecgLayout") || "grid";   // 3×4 printout is the default
 let mvRange = parseFloat(localStorage.getItem("ecgGain")) || 1.5;
 let sweep = parseFloat(localStorage.getItem("ecgSweep")) || 25;
+if (sweep !== 25 && sweep !== 50) sweep = 25;   // 12.5 mm/s removed (redundant with the 10 s buffer)
 function applyTheme(t) { theme = THEMES[t] ? t : "paper"; document.body.className = "theme-" + theme; themeSel.value = theme; localStorage.setItem("ecgTheme", theme); }
 themeSel.onchange = () => applyTheme(themeSel.value);
 layoutSel.onchange = () => { layout = layoutSel.value; localStorage.setItem("ecgLayout", layout); };
@@ -373,7 +374,7 @@ window.addEventListener("orientationchange", () => setTimeout(resize, 250));
 
 let activeBuf = buf;
 
-function drawLead(lead, x0, y0, w, h, windowSec, th, cal, useF, boxed) {
+function drawLead(lead, x0, y0, w, h, windowSec, th, cal, useF, boxed, endIdx) {
   const labelW = boxed ? 30 : 52;
   const calW = (cal && calPulseCb.checked) ? 26 : 0;
   const xData = x0 + labelW + calW;
@@ -399,14 +400,15 @@ function drawLead(lead, x0, y0, w, h, windowSec, th, cal, useF, boxed) {
   else { ctx.beginPath(); ctx.moveTo(0, y0); ctx.lineTo(w, y0); ctx.stroke(); }
 
   // scaling
-  const start = Math.max(0, activeBuf.length - nShow), n = activeBuf.length - start;
+  const end = (endIdx == null) ? activeBuf.length : Math.min(activeBuf.length, Math.max(0, endIdx));
+  const start = Math.max(0, end - nShow), n = end - start;
   let toY;
   if (cal) {
-    let mean = 0; for (let i = start; i < activeBuf.length; i++) mean += lead.fn(useF ? activeBuf[i].f : activeBuf[i].raw); mean /= (n || 1);
+    let mean = 0; for (let i = start; i < end; i++) mean += lead.fn(useF ? activeBuf[i].f : activeBuf[i].raw); mean /= (n || 1);
     toY = v => yc - ((v - mean) * lsbUv / 1000) * pxPerMv;
   } else {
     let lo = Infinity, hi = -Infinity;
-    for (let i = start; i < activeBuf.length; i++) { const v = lead.fn(useF ? activeBuf[i].f : activeBuf[i].raw); if (v < lo) lo = v; if (v > hi) hi = v; }
+    for (let i = start; i < end; i++) { const v = lead.fn(useF ? activeBuf[i].f : activeBuf[i].raw); if (v < lo) lo = v; if (v > hi) hi = v; }
     if (!isFinite(lo)) { lo = -1; hi = 1; } if (hi === lo) { hi += 1; lo -= 1; }
     const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
     toY = v => y0 + h - ((v - lo) / (hi - lo)) * h;
@@ -468,20 +470,37 @@ function draw() {
   const cal = calibCb.checked, useF = filterCb.checked;
   const k = 25 / sweep;                                  // sweep-speed time scale
   const cap = s => Math.min(s, BUFFER_SEC);
+  let shownSec = BUFFER_SEC;                              // visible duration (for the scale caption)
 
   if (layout === "stacked") {
-    const laneH = H / LEADS.length, ws = cap(5 * k);
+    const laneH = H / LEADS.length, ws = cap(10 * k);     // 10 s/lane at 25 mm/s (5 s at 50)
+    shownSec = ws;
     for (let i = 0; i < LEADS.length; i++) drawLead(LEADS[i], 0, i * laneH, W, laneH, ws, th, cal, useF, false);
   } else {
+    // Clinical 3×4 printout: the four columns are sequential time-slices of one
+    // ~10 s acquisition (col 1 = 0–2.5 s … col 4 = 7.5–10 s), tiling the full page.
     const rhythm = layout === "grid_rhythm";
     const gridH = rhythm ? H * 0.78 : H;
-    const cols = 4, rows = 3, cw = W / cols, ch = gridH / rows, ws = cap(2.5 * k);
+    const cols = 4, rows = 3, cw = W / cols, ch = gridH / rows;
+    const pageEnd = activeBuf.length;
+    const segLen = Math.max(1, Math.floor(Math.min(activeBuf.length, Math.round(FS * cap(10 * k))) / cols));
+    const ws = segLen / FS;                                // seconds per column (≈2.5 s at 25 mm/s)
+    shownSec = ws * cols;                                  // full page duration (~10 s at 25 mm/s)
     for (let idx = 0; idx < LEADS.length; idx++) {
       const c = Math.floor(idx / rows), r = idx % rows;
-      drawLead(LEADS[idx], c * cw, r * ch, cw, ch, ws, th, cal, useF, true);
+      const endIdx = pageEnd - (cols - 1 - c) * segLen;    // column c → its 2.5 s slice of the 10 s page
+      drawLead(LEADS[idx], c * cw, r * ch, cw, ch, ws, th, cal, useF, true, endIdx);
     }
-    if (rhythm) drawLead(LEADS[1], 0, gridH, W, H - gridH, cap(BUFFER_SEC * k), th, cal, useF, false);  // lead II strip
+    if (rhythm) drawLead(LEADS[1], 0, gridH, W, H - gridH, cap(BUFFER_SEC * k), th, cal, useF, false);  // full 10 s lead-II rhythm strip
   }
+
+  // ECG scale/speed caption (printout-style footer)
+  const capTxt = `${sweep} mm/s · 10 mm/mV · ${Math.round(shownSec)} s`;
+  ctx.font = "10px sans-serif"; const capW = ctx.measureText(capTxt).width;
+  ctx.fillStyle = theme === "dark" ? "rgba(15,17,22,0.72)" : "rgba(255,255,255,0.72)";
+  ctx.fillRect(W - capW - 14, H - 19, capW + 12, 16);
+  ctx.fillStyle = th.label; ctx.textAlign = "right"; ctx.textBaseline = "bottom";
+  ctx.fillText(capTxt, W - 7, H - 5);
 
   if (trendsOn && trendBuf.length > 1) drawTrend(W, H, th);
 
