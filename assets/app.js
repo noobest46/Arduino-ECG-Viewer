@@ -361,7 +361,7 @@ function buildReport() {
     `<div class="rep-verdict ${v.cls}">${v.label} <span>· ${v.sub}</span></div>` +
     `<img class="rep-img" src="${canvas.toDataURL("image/png")}" />` +
     `<table class="rep-tab"><tbody>` +
-    `<tr><td>Heart rate</td><td>${m && m.hr != null ? m.hr + " bpm" : "—"}</td><td>Rhythm</td><td>${m ? m.rhythm : "—"}</td></tr>` +
+    `<tr><td>Heart rate</td><td>${m && m.hr != null ? m.hr + " bpm" : "—"}</td><td>Rhythm</td><td>${m ? classify(m).full : "—"}</td></tr>` +
     `<tr><td>PR</td><td>${fmtMs(m ? m.pr : NaN)}</td><td>QRS</td><td>${fmtMs(m ? m.qrs : NaN)}</td></tr>` +
     `<tr><td>QT</td><td>${fmtMs(m ? m.qt : NaN)}</td><td>QTc</td><td>${fmtMs(m ? m.qtc : NaN)}</td></tr>` +
     `<tr><td>Axis</td><td>${ang}</td><td>ST (II)</td><td>${st}</td></tr>` +
@@ -683,17 +683,14 @@ function analyze(b) {
   }
 
   const RR = []; for (let k = 1; k < peaks.length; k++) RR.push((peaks[k] - peaks[k - 1]) / FS);
-  let rhythm = "—", hr = null;
+  let hr = null, irregular = false;
   if (RR.length >= 3) {
-    const mRR = RR.reduce((a, x) => a + x, 0) / RR.length, hrr = 60 / mRR;
+    const mRR = RR.reduce((a, x) => a + x, 0) / RR.length;
     const sd = Math.sqrt(RR.reduce((a, x) => a + (x - mRR) ** 2, 0) / RR.length);
-    hr = Math.round(hrr);
-    if (sd / mRR > 0.15) rhythm = "Irregular (?AF)";
-    else if (hrr < 60) rhythm = "Sinus brady";
-    else if (hrr > 100) rhythm = "Sinus tachy";
-    else rhythm = "Normal sinus";
+    hr = Math.round(60 / mRR);
+    irregular = (sd / mRR) > 0.15;          // beat-to-beat RR variability
   }
-  return { rhythm, hr, nBeats: peaks.length, pr: median(PR), qrs: median(QRS), qt: median(QT), qtc: median(QTc), ang: median(ANG), st: median(ST) };
+  return { hr, irregular, nBeats: peaks.length, pr: median(PR), qrs: median(QRS), qt: median(QT), qtc: median(QTc), ang: median(ANG), st: median(ST) };
 }
 
 const fmtMs = v => isFinite(v) ? v.toFixed(0) + " ms" : "—";
@@ -703,8 +700,9 @@ function computeMeasurements() {     // live measurements bar (uses the rolling 
   if (!m) return;
   const hrT = bpmNow();
   if (hrT) { trendBuf.push({ t: Date.now(), hr: hrT }); if (trendBuf.length > 600) trendBuf.shift(); }
+  const rh = classify(m);
   measEl.innerHTML =
-    `<span>Rhythm<b>${m.rhythm}</b></span>` +
+    `<span>Rhythm<b class="rh-${rh.cls}">${rh.short}</b></span>` +
     `<span>PR<b>${fmtMs(m.pr)}</b></span>` +
     `<span>QRS<b>${fmtMs(m.qrs)}</b></span>` +
     `<span>QT<b>${fmtMs(m.qt)}</b></span>` +
@@ -714,13 +712,27 @@ function computeMeasurements() {     // live measurements bar (uses the rolling 
     `<span class="note">approx · not for clinical use</span>`;
 }
 
-// Consumer-facing verdict (Omron-style) from analyzer metrics.
+// Rule-based rhythm hint from HR + RR regularity + QRS width (narrow <120 ms ⇒ supraventricular,
+// wide ≥120 ms ⇒ ventricular origin / aberrant conduction). Screening only — NOT a diagnosis.
+function classify(m) {
+  if (!m || m.hr == null || m.nBeats < 3) return { full: "Inconclusive", short: "—", cls: "none" };
+  const wide = isFinite(m.qrs) && m.qrs >= 120;
+  if (m.irregular) return { full: "Irregular — possible AF", short: "Possible AF", cls: "warn" };
+  if (m.hr > 100) return wide
+    ? { full: "Wide-complex tachycardia (possibly ventricular)", short: "Wide-complex tachy", cls: "bad" }
+    : { full: "Tachycardia — narrow (supraventricular)", short: "Tachycardia", cls: "warn" };
+  if (m.hr < 60) return { full: "Bradycardia (slow)", short: "Bradycardia", cls: "warn" };
+  if (wide) return { full: "Wide QRS — possible bundle-branch block", short: "Wide QRS", cls: "warn" };
+  return { full: "Normal sinus rhythm", short: "Sinus rhythm", cls: "good" };
+}
+
+// Consumer-facing verdict for the result card.
 function verdict(m) {
-  if (!m || m.hr == null || m.nBeats < 3) return { label: "Inconclusive — please retry", cls: "warn", sub: "signal too short or noisy" };
-  if (m.rhythm === "Irregular (?AF)") return { label: "Possible Atrial Fibrillation", cls: "bad", sub: `${m.hr} bpm · irregular rhythm` };
-  if (m.rhythm === "Sinus brady") return { label: "Bradycardia (slow heart rate)", cls: "warn", sub: `${m.hr} bpm · regular` };
-  if (m.rhythm === "Sinus tachy") return { label: "Tachycardia (fast heart rate)", cls: "warn", sub: `${m.hr} bpm · regular` };
-  return { label: "Normal Sinus Rhythm", cls: "good", sub: `${m.hr} bpm · regular` };
+  const c = classify(m);
+  const sub = (m && m.hr != null)
+    ? `${m.hr} bpm · ${m.irregular ? "irregular" : "regular"}${isFinite(m.qrs) ? " · QRS " + m.qrs.toFixed(0) + " ms" : ""}`
+    : "signal too short or noisy";
+  return { label: c.full, cls: c.cls, sub };
 }
 setInterval(computeMeasurements, 1000);
 

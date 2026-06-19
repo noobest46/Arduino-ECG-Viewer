@@ -92,6 +92,12 @@ header h1 { font-size: 0.95rem; margin: 0; font-weight: 600; letter-spacing: 0.0
 .verdict.good { color: #1f8a4c; }
 .verdict.warn { color: #b8860b; }
 .verdict.bad { color: #b13a3a; }
+.verdict.none { color: var(--muted); }
+/* rhythm colour in the measurements bar */
+.measbar b.rh-good { color: #1f8a4c; }
+.measbar b.rh-warn { color: #b8860b; }
+.measbar b.rh-bad  { color: #b13a3a; }
+.measbar b.rh-none { color: var(--muted); }
 .verdict-sub { text-align: center; color: var(--muted); font-size: 0.85rem; margin-bottom: 0.7rem; }
 .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem 1.2rem; font-size: 0.82rem; }
 .result-grid > div { display: flex; justify-content: space-between; gap: 0.5rem; border-bottom: 1px solid var(--border); padding: 0.28rem 0; }
