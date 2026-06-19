@@ -647,13 +647,24 @@ function analyze(b) {
   const II = i => b[i].f[2], LI = i => b[i].f[1], AVF = i => b[i].f[2] - b[i].f[1] / 2;
   const dt = 1 / FS, w = s => Math.round(s * FS);
 
-  // Beat detection on RECTIFIED lead II — catches the dominant deflection of either polarity,
-  // so wide / negative VT complexes register (not just upright R waves).
-  const A = i => Math.abs(II(i));
-  let maxA = 0; for (let i = 0; i < n; i++) { if (A(i) > maxA) maxA = A(i); }
-  if (maxA < 1) return null;
-  const thr = 0.4 * maxA, refr = w(0.25), peaks = []; let last = -1e9;
-  for (let i = 2; i < n - 2; i++) if (A(i) > thr && A(i) >= A(i - 1) && A(i) > A(i + 1) && (i - last) > refr) { peaks.push(i); last = i; }
+  // QRS detection (Pan–Tompkins style): derivative → square → moving-window integrate.
+  // Keys on the sharp QRS slope, so wide/negative VT complexes register while the gentle
+  // T wave stays below threshold — no double-counting on big T waves (e.g. bundle branch block).
+  let mxa = 0; for (let i = 0; i < n; i++) { const a = Math.abs(II(i)); if (a > mxa) mxa = a; }
+  if (mxa < 1) return null;
+  const der = new Float64Array(n);
+  for (let i = 2; i < n - 2; i++) der[i] = 2 * II(i + 2) + II(i + 1) - II(i - 1) - 2 * II(i - 2);
+  const iwin = Math.max(1, Math.round(0.10 * FS)), mwi = new Float64Array(n);
+  let acc = 0;
+  for (let i = 0; i < n; i++) { acc += der[i] * der[i]; if (i >= iwin) acc -= der[i - iwin] * der[i - iwin]; mwi[i] = acc; }
+  let mx = 0; for (let i = 0; i < n; i++) if (mwi[i] > mx) mx = mwi[i];
+  if (mx <= 0) return null;
+  const ithr = 0.2 * mx, irefr = w(0.22), peaks = []; let last = -1e9;
+  for (let i = 1; i < n - 1; i++) if (mwi[i] > ithr && mwi[i] >= mwi[i - 1] && mwi[i] > mwi[i + 1] && (i - last) > irefr) {
+    let bi = i, bv = -1;                                                  // refine to the actual R (max |II|) in the QRS window
+    for (let j = Math.max(0, i - iwin - 2); j <= Math.min(n - 1, i + 2); j++) { const a = Math.abs(II(j)); if (a > bv) { bv = a; bi = j; } }
+    peaks.push(bi); last = i;
+  }
   if (peaks.length < 3) return { rhythm: "—", hr: null, nBeats: peaks.length, pr: NaN, qrs: NaN, qt: NaN, qtc: NaN, ang: NaN, st: NaN };
 
   const PR = [], QRS = [], QT = [], QTc = [], ST = [], ANG = [];
@@ -714,13 +725,17 @@ function computeMeasurements() {     // live measurements bar (uses the rolling 
     `<span class="note">approx · not for clinical use</span>`;
 }
 
-// Rule-based rhythm hint from HR + RR regularity + QRS width (narrow <120 ms ⇒ supraventricular,
-// wide ≥120 ms ⇒ ventricular origin / aberrant conduction). Screening only — NOT a diagnosis.
+// Rule-based rhythm hint from HR + RR regularity + QRS width + axis. Wide QRS or an extreme
+// axis ⇒ ventricular / aberrant conduction; narrow ⇒ supraventricular. Screening only — NOT a
+// diagnosis. QRS_WIDE is calibrated to the MS400 (our QRS reads low vs the device: narrow ~40,
+// VT ~104, BBB ~80 ms).
+const QRS_WIDE = 80;
 function classify(m) {
   if (!m || m.hr == null || m.nBeats < 3) return { full: "Inconclusive", short: "—", cls: "none" };
-  const wide = isFinite(m.qrs) && m.qrs >= 120;
+  const wide = isFinite(m.qrs) && m.qrs >= QRS_WIDE;
+  const extremeAxis = isFinite(m.ang) && (m.ang < -90 || m.ang > 180);
   if (m.irregular) return { full: "Irregular — possible AF", short: "Possible AF", cls: "warn" };
-  if (m.hr > 100) return wide
+  if (m.hr > 100) return (wide || extremeAxis)
     ? { full: "Wide-complex tachycardia (possibly ventricular)", short: "Wide-complex tachy", cls: "bad" }
     : { full: "Tachycardia — narrow (supraventricular)", short: "Tachycardia", cls: "warn" };
   if (m.hr < 60) return { full: "Bradycardia (slow)", short: "Bradycardia", cls: "warn" };
