@@ -659,11 +659,14 @@ function analyze(b) {
   for (let i = 0; i < n; i++) { acc += der[i] * der[i]; if (i >= iwin) acc -= der[i - iwin] * der[i - iwin]; mwi[i] = acc; }
   let mx = 0; for (let i = 0; i < n; i++) if (mwi[i] > mx) mx = mwi[i];
   if (mx <= 0) return null;
-  const ithr = 0.2 * mx, irefr = w(0.22), peaks = []; let last = -1e9;
+  const ithr = 0.2 * mx, irefr = w(0.20), tWin = w(0.36), peaks = []; let last = -1e9, lastMwi = 0;
   for (let i = 1; i < n - 1; i++) if (mwi[i] > ithr && mwi[i] >= mwi[i - 1] && mwi[i] > mwi[i + 1] && (i - last) > irefr) {
+    // T-wave discrimination: a low-energy peak soon after a QRS (e.g. the big discordant
+    // T wave in bundle-branch block) carries far less slope-energy — reject it, don't double-count.
+    if ((i - last) < tWin && mwi[i] < 0.5 * lastMwi) continue;
     let bi = i, bv = -1;                                                  // refine to the actual R (max |II|) in the QRS window
     for (let j = Math.max(0, i - iwin - 2); j <= Math.min(n - 1, i + 2); j++) { const a = Math.abs(II(j)); if (a > bv) { bv = a; bi = j; } }
-    peaks.push(bi); last = i;
+    peaks.push(bi); last = i; lastMwi = mwi[i];
   }
   if (peaks.length < 3) return { rhythm: "—", hr: null, nBeats: peaks.length, pr: NaN, qrs: NaN, qt: NaN, qtc: NaN, ang: NaN, st: NaN };
 
