@@ -647,11 +647,13 @@ function analyze(b) {
   const II = i => b[i].f[2], LI = i => b[i].f[1], AVF = i => b[i].f[2] - b[i].f[1] / 2;
   const dt = 1 / FS, w = s => Math.round(s * FS);
 
-  // R peaks on filtered lead II
-  let maxA = 0; for (let i = 0; i < n; i++) { const v = Math.abs(II(i)); if (v > maxA) maxA = v; }
+  // Beat detection on RECTIFIED lead II — catches the dominant deflection of either polarity,
+  // so wide / negative VT complexes register (not just upright R waves).
+  const A = i => Math.abs(II(i));
+  let maxA = 0; for (let i = 0; i < n; i++) { if (A(i) > maxA) maxA = A(i); }
   if (maxA < 1) return null;
-  const thr = 0.5 * maxA, refr = w(0.3), peaks = []; let last = -1e9;
-  for (let i = 2; i < n - 2; i++) if (II(i) > thr && II(i) >= II(i - 1) && II(i) > II(i + 1) && (i - last) > refr) { peaks.push(i); last = i; }
+  const thr = 0.4 * maxA, refr = w(0.25), peaks = []; let last = -1e9;
+  for (let i = 2; i < n - 2; i++) if (A(i) > thr && A(i) >= A(i - 1) && A(i) > A(i + 1) && (i - last) > refr) { peaks.push(i); last = i; }
   if (peaks.length < 3) return { rhythm: "—", hr: null, nBeats: peaks.length, pr: NaN, qrs: NaN, qt: NaN, qtc: NaN, ang: NaN, st: NaN };
 
   const PR = [], QRS = [], QT = [], QTc = [], ST = [], ANG = [];
