@@ -171,7 +171,7 @@ function push(t, raw) {
 }
 
 // ---------- heart rate (filtered lead II) ----------
-let env = 1, lastPeak = 0, prevV = 0, bpmHist = [];
+let env = 1, lastPeak = 0, prevV = 0, bpmHist = [], liveHR = null;
 function detectHR(v, t) {
   env = Math.max(Math.abs(v), env * 0.995);
   const thr = 0.4 * env;
@@ -627,8 +627,7 @@ function draw() {
 
   if (trendsOn && trendBuf.length > 1) drawTrend(W, H, th);
 
-  const b = bpmNow();
-  bpmEl.textContent = b ? b + " BPM" : "– BPM";
+  bpmEl.textContent = liveHR ? liveHR + " BPM" : "– BPM";   // same analyzer as the popup/measurements (no T-wave double-count)
   requestAnimationFrame(draw);
 }
 
@@ -717,9 +716,9 @@ const fmtMs = v => isFinite(v) ? v.toFixed(0) + " ms" : "—";
 
 function computeMeasurements() {     // live measurements bar (uses the rolling 10 s buffer)
   const m = analyze(buf);
-  if (!m) return;
-  const hrT = bpmNow();
-  if (hrT) { trendBuf.push({ t: Date.now(), hr: hrT }); if (trendBuf.length > 600) trendBuf.shift(); }
+  if (!m) { liveHR = null; return; }
+  liveHR = m.hr;
+  if (m.hr) { trendBuf.push({ t: Date.now(), hr: m.hr }); if (trendBuf.length > 600) trendBuf.shift(); }
   const rh = classify(m);
   measEl.innerHTML =
     `<span>Rhythm<b class="rh-${rh.cls}">${rh.short}</b></span>` +
