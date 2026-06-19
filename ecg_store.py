@@ -9,7 +9,6 @@
 
 import os
 import time
-import math
 import struct
 import logging
 
@@ -65,12 +64,10 @@ def build_edf(rows, fs, lsb_uv, patient="X", created=None):
     ann_spr, nrec = ANN // 2, max(1, (N + int(fs) - 1) // int(fs))
     derived = [_derive12(c) for c in rows]
     leads = [[derived[i][li] * lsb_uv for i in range(N)] for li in range(ns)]
-    allv = [v for arr in leads for v in arr]                 # uniform physical range across all 12 leads
-    glo = math.floor(min(allv)) if allv else -1000           # (same resolution → EDFbrowser derivations + uniform scale)
-    ghi = math.ceil(max(allv)) if allv else 1000
-    if ghi - glo < 100:
-        glo -= 50
-        ghi += 50
+    # Fixed +/-16 mV physical range on every file (NOT the recording's own min/max), so the uV<->digital
+    # calibration is identical across all studies: EDFbrowser shows the same amplitude every time and a
+    # saved montage applies to any file. +/-16 mV covers ECG + electrode-offset headroom; ~0.49 uV/LSB.
+    glo, ghi = -16000, 16000
     pmin = [int(glo)] * ns
     pmax = [int(ghi)] * ns
     sig = ns + 1

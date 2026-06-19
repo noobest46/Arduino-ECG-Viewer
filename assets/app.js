@@ -215,8 +215,10 @@ function buildEDF(src) {
     for (let i = 0; i < N; i++) { const v = LEADS[c].fn(src[i].raw) * lsbUv; a[i] = v; if (v < glo) glo = v; if (v > ghi) ghi = v; }
     leads.push(a);
   }
-  if (!isFinite(glo)) { glo = -1000; ghi = 1000; }                   // uniform physical range across all 12 leads
-  glo = Math.floor(glo); ghi = Math.ceil(ghi); if (ghi - glo < 100) { glo -= 50; ghi += 50; }   // (same resolution → EDFbrowser derivations + uniform scale)
+  // Fixed ±16 mV physical range on every export (NOT the recording's own min/max), so the µV↔digital
+  // calibration is identical across all files: EDFbrowser then shows the same amplitude every time and a
+  // saved montage applies to any study. ±16 mV covers ECG + electrode-offset headroom (no clipping); ~0.49 µV/LSB.
+  glo = -16000; ghi = 16000;
   const pmin = new Array(ns).fill(glo), pmax = new Array(ns).fill(ghi);
   const sig = ns + 1, headerLen = 256 * (sig + 1);
   const d = (currentStudyMeta && currentStudyMeta.created) ? new Date(currentStudyMeta.created * 1000) : new Date();
